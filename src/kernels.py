@@ -58,7 +58,6 @@ class FlashInferGEMM(Kernel):
         return KernelName.FI_GEMM
 
     def _call(self, *, batch_size: int, inp_size: int, out_size: int) -> int:
-        return 1
         device = torch.cuda.current_device()
         a = torch.randn((batch_size, inp_size), dtype=torch.bfloat16, device=device)
         b = torch.randn((inp_size, out_size), dtype=torch.bfloat16, device=device)
@@ -79,7 +78,6 @@ class FlashInferAttn(Kernel):
         head_size: int,
         seq_lens: list[int],
     ) -> int:
-        return 2
         device = torch.cuda.current_device()
         seq_lens_t = torch.tensor(seq_lens, dtype=torch.int32, device=device)
         page_size = SCHEDULER_CONFIG.page_size
@@ -153,7 +151,6 @@ class FlashInferAttn(Kernel):
         seq_lens: list[int],
         context_lens: list[int] | None = None,
     ) -> int:
-        return 1
         device = torch.cuda.current_device()
         seq_lens_t = torch.tensor(seq_lens, dtype=torch.int32, device=device)
         context_lens_t = torch.tensor(context_lens, dtype=torch.int32, device=device)
