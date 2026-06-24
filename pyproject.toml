@@ -1,0 +1,11 @@
+[project]
+name = "transformersim"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cachetools>=7.1.4",
+    "flashinfer-python>=0.6.12",
+    "transformers>=5.12.1",
+]
