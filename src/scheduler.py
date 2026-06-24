@@ -2,22 +2,19 @@ from collections import deque
 from abc import ABC, abstractmethod
 from models.registry import TransformerModel
 from config import Request, RequestBatch, RequestType
+import heapq
 
 
-class Scheduler(ABC):
-    @abstractmethod
-    def step(self):
-        pass
-
-
-class ContinuousBatchingScheduler(Scheduler):
+class ContinuousBatchingScheduler:
     def __init__(
         self, requests: list[Request], model: TransformerModel, max_batch_len: int = 32
     ):
 
         # set of requests that need to be processed
-        self.pending = deque()
-        self.pending.extend(requests)
+        self.pending = []
+
+        for req in requests:
+            heapq.heappush(self.pending, (req.arrival_time, req))
 
         self.completed = []
         self.running: list[Request] = []
@@ -40,10 +37,12 @@ class ContinuousBatchingScheduler(Scheduler):
         self.running = running
 
     def add_pending_reqs(self):
-        while len(self.pending):
-            if len(self.running) > self.max_batch_len:
-                break
-            self.running.append(self.pending.popleft())
+        while (
+            self.pending
+            and self.pending[0][0] <= self.elapsed_time
+            and len(self.running) < self.max_batch_len
+        ):
+            self.running.append(heapq.heappop(self.pending)[1])
 
     def step(self):
 
@@ -51,17 +50,21 @@ class ContinuousBatchingScheduler(Scheduler):
 
         self.add_pending_reqs()
 
+        if not self.pending:
+            self.elapsed_time += int(1e6)
+
         prefill_reqs = list(filter(lambda r: r.is_prefill(), self.running))
 
         if prefill_reqs:
-            self.elapsed_time += self.model.forward(
-                RequestBatch(prefill_reqs, RequestType.PREFILL)
+            self.elapsed_time += int(
+                self.model.forward(RequestBatch(prefill_reqs, RequestType.PREFILL))
+                * 1e6
             )
 
         decode_reqs = list(filter(lambda r: r.is_decode(), self.running))
         if decode_reqs:
-            self.elapsed_time += self.model.forward(
-                RequestBatch(decode_reqs, RequestType.DECODE)
+            self.elapsed_time += int(
+                self.model.forward(RequestBatch(decode_reqs, RequestType.DECODE)) * 1e6
             )
 
         for req in self.running:
@@ -69,6 +72,8 @@ class ContinuousBatchingScheduler(Scheduler):
                 req.num_computed_tokens = req.num_input_tokens
             else:
                 req.num_computed_tokens += 1
+                if req.num_computed_tokens == req.num_input_tokens + 1:
+                    req.token_start_time = self.elapsed_time
 
     def start(self):
         while len(self.pending) or len(self.running):

@@ -7,7 +7,12 @@ from dataclasses import dataclass
 class Request:
     num_input_tokens: int
     num_output_tokens: int
-    num_computed_tokens: int
+    num_computed_tokens: int = 0
+
+    # request arrival time (ns)
+    arrival_time: int = 0
+    # time when first token got generated
+    token_start_time: int = 0
 
     def is_prefill(self):
         return self.num_computed_tokens < self.num_input_tokens
