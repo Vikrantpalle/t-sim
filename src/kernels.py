@@ -76,14 +76,14 @@ class FlashInferAttn(Kernel):
         num_heads: int,
         num_kv_heads: int,
         head_size: int,
-        seq_lens: list[int],
+        context_lens: list[int],
     ) -> int:
         device = torch.cuda.current_device()
-        seq_lens_t = torch.tensor(seq_lens, dtype=torch.int32, device=device)
+        ctx_lens_t = torch.tensor(context_lens, dtype=torch.int32, device=device)
         page_size = SCHEDULER_CONFIG.page_size
-        batch_size = len(seq_lens)
+        batch_size = len(context_lens)
 
-        page_lens = (seq_lens_t + page_size - 1) // page_size
+        page_lens = (ctx_lens_t + page_size - 1) // page_size
         total_pages = int(torch.sum(page_lens).item())
 
         if total_pages >= SCHEDULER_CONFIG.max_pages:
@@ -97,7 +97,7 @@ class FlashInferAttn(Kernel):
             SCHEDULER_CONFIG.max_pages, dtype=torch.int32, device=device
         )[:total_pages]
 
-        last_page_len = seq_lens_t % page_size
+        last_page_len = ctx_lens_t % page_size
         last_page_len[last_page_len == 0] = page_size
 
         q = torch.randn(
@@ -162,7 +162,7 @@ class FlashInferAttn(Kernel):
         total_tokens = int(torch.sum(seq_lens_t).item())
 
         page_lens = (
-            seq_lens_t + context_lens_t + SCHEDULER_CONFIG.page_size - 1
+            context_lens_t + SCHEDULER_CONFIG.page_size - 1
         ) // SCHEDULER_CONFIG.page_size
         total_pages = int(torch.sum(page_lens).item())
         if total_pages >= SCHEDULER_CONFIG.max_pages:
@@ -176,7 +176,7 @@ class FlashInferAttn(Kernel):
             SCHEDULER_CONFIG.max_pages, dtype=torch.int32, device=device
         )[:total_pages]
 
-        last_page_len = seq_lens_t % SCHEDULER_CONFIG.page_size
+        last_page_len = context_lens_t % SCHEDULER_CONFIG.page_size
         last_page_len[last_page_len == 0] = SCHEDULER_CONFIG.page_size
 
         q = torch.randn(
@@ -241,7 +241,7 @@ class FlashInferAttn(Kernel):
                 num_heads=num_heads,
                 num_kv_heads=num_kv_heads,
                 head_size=head_size,
-                seq_lens=seq_lens,
+                context_lens=seq_lens,
             )
         else:
             time_taken = self._bench_prefill(

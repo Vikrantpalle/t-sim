@@ -52,7 +52,7 @@ class QKVParallel:
     def forward(self, input: RequestBatch) -> int:
 
         x = 0
-        x += self.ffn_op.forward(input)
+        x += self.ffn_op.forward(sum(input.get_seq_lens()))
 
         return x
 
@@ -87,7 +87,7 @@ class FFNRowParallel:
         self.ffn_op = FFNOp(inp_s=input_size, out_s=out_size, target=target)
 
     def forward(self, input: RequestBatch):
-        return self.ffn_op.forward(input)
+        return self.ffn_op.forward(sum(input.get_seq_lens()))
 
 
 class FFNColumnParallel:
@@ -106,7 +106,7 @@ class FFNColumnParallel:
 
         # send
 
-        x += self.ffn_op.forward(input)
+        x += self.ffn_op.forward(sum(input.get_seq_lens()))
 
         # all reduce
 
@@ -124,7 +124,7 @@ class VocabParallel:
 
         # send
 
-        x += self.ffn_op.forward(input)
+        x += self.ffn_op.forward(len(input.get_seq_lens()))
 
         # all reduce
 

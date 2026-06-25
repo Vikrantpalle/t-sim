@@ -2,9 +2,6 @@ from kernels import FlashInferAttn, Kernel, FlashInferGEMM
 from config import RequestBatch, Device, RequestType
 
 
-LOG_FD = None
-
-
 class FFNOp:
     def __init__(
         self, *, inp_s: int, out_s: int, target: Device, backend: str = "flashinfer"
@@ -20,10 +17,9 @@ class FFNOp:
     def resolve_kernel(self) -> Kernel:
         return FlashInferGEMM(self.target)
 
-    def forward(self, input: RequestBatch) -> int:
-        seq_lens = input.get_seq_lens()
+    def forward(self, batch_size: int) -> int:
         return self.kernel.call(
-            batch_size=sum(seq_lens),
+            batch_size=batch_size,
             inp_size=self.inp_s,
             out_size=self.out_s,
         )
@@ -52,9 +48,7 @@ class AttentionOp:
 
     def forward(self, input: RequestBatch) -> int:
         seq_lens = input.get_seq_lens()
-        context_lens = None
-        if input.request_type == RequestType.PREFILL:
-            context_lens = input.get_context_lens()
+        context_lens = input.get_context_lens()
 
         return self.kernel.call(
             num_heads=self.q_h,

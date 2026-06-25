@@ -39,9 +39,7 @@ class RequestBatch:
         ]
 
     def get_context_lens(self):
-        return [
-            0 if req.is_decode() else req.num_computed_tokens for req in self.requests
-        ]
+        return [req.num_computed_tokens for req in self.requests]
 
 
 @dataclass
