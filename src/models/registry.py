@@ -1,3 +1,4 @@
+from graph import GraphContext
 from transformers import AutoConfig
 from config import RequestBatch, ModelConfig
 from enum import StrEnum
@@ -23,6 +24,10 @@ class TransformerModel(ABC):
     @classmethod
     @abstractmethod
     def parse_config(cls, config: dict) -> ModelConfig:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_graph_ctx(self) -> GraphContext:
         raise NotImplementedError
 
 

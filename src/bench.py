@@ -68,6 +68,8 @@ def benchmark_model(
     print(f"Inp Tokens / s: {inp_tok_s}tok/s")
     print(f"Out Tokens / s: {out_tok_s}tok/s")
 
+    scheduler.metric_collector.visualize()
+
 
 if __name__ == "__main__":
     model = "Qwen/Qwen3-8B"

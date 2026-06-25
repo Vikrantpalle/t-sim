@@ -1,5 +1,4 @@
-from collections import deque
-from abc import ABC, abstractmethod
+from metrics import MetricCollector
 from models.registry import TransformerModel
 from config import Request, RequestBatch, RequestType
 import heapq
@@ -24,6 +23,8 @@ class ContinuousBatchingScheduler:
         self.model = model
 
         self.max_batch_len = max_batch_len
+
+        self.metric_collector = MetricCollector(model)
 
     def drain_completed_reqs(self):
         running = []
@@ -60,12 +61,14 @@ class ContinuousBatchingScheduler:
                 self.model.forward(RequestBatch(prefill_reqs, RequestType.PREFILL))
                 * 1e6
             )
+            self.metric_collector.add_metrics(is_prefill=True)
 
         decode_reqs = list(filter(lambda r: r.is_decode(), self.running))
         if decode_reqs:
             self.elapsed_time += int(
                 self.model.forward(RequestBatch(decode_reqs, RequestType.DECODE)) * 1e6
             )
+            self.metric_collector.add_metrics(is_prefill=False)
 
         for req in self.running:
             if req.is_prefill():

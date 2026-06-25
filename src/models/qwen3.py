@@ -1,4 +1,4 @@
-from graph import GraphModule
+from graph import GraphModule, GraphContext, GRAPH_CTX_PATH
 from ops import AttentionOp, FFNOp
 from config import ModelConfig, ParallelConfig, RequestBatch, Device
 from .registry import TransformerModel, ModelArch
@@ -265,6 +265,12 @@ class Qwen3Causal(TransformerModel):
 
     def forward(self, req: RequestBatch) -> int:
         return self.model.forward(req)
+
+    def get_graph_ctx(self) -> GraphContext:
+        ctx = getattr(self.model, GRAPH_CTX_PATH)
+        if ctx is None:
+            raise ValueError("Graph Context not found")
+        return ctx
 
     @classmethod
     def parse_config(cls, config: dict) -> ModelConfig:

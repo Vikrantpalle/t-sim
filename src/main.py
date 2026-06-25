@@ -1,4 +1,3 @@
-from graph import GraphContext
 from models.registry import AutoModelConfig
 from scheduler import ContinuousBatchingScheduler
 from config import (
@@ -24,9 +23,7 @@ if __name__ == "__main__":
 
     req = [Request(512, 2, 0) for _ in range(1)]
 
-    ContinuousBatchingScheduler(req, model).start()
+    scheduler = ContinuousBatchingScheduler(req, model)
+    scheduler.start()
 
-    graph_ctx: GraphContext = getattr(model.model, "__tsim_graph_ctx__")
-
-    for op in graph_ctx.ops:
-        print(f"{'.'.join(op.path)}:{op.__class__.__name__} {op.exec_time}ns")
+    scheduler.metric_collector.visualize()

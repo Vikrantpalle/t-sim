@@ -38,10 +38,8 @@ class Kernel(ABC):
         key.update(kwargs)
         key_hash = sha256_hash(key)
         if key_hash in CACHE:
-            print("cache hit!", key)
             return CACHE[key_hash]
 
-        print("missed", key)
         res = self._call(*args, **kwargs)
         CACHE[key_hash] = res
         return res
@@ -62,7 +60,7 @@ class FlashInferGEMM(Kernel):
         a = torch.randn((batch_size, inp_size), dtype=torch.bfloat16, device=device)
         b = torch.randn((inp_size, out_size), dtype=torch.bfloat16, device=device)
         times = bench_gpu_time(lambda: fi.gemm.mm_bf16(a, b))
-        return np.mean(times)
+        return int(np.mean(times) * 1e6)
 
 
 class FlashInferAttn(Kernel):
@@ -140,7 +138,7 @@ class FlashInferAttn(Kernel):
 
         times = bench_gpu_time(lambda: decode_wrapper.run(q, kv_cache))
 
-        return np.mean(times)
+        return int(np.mean(times) * 1e6)
 
     def _bench_prefill(
         self,
@@ -223,7 +221,7 @@ class FlashInferAttn(Kernel):
 
         times = bench_gpu_time(lambda: prefill_wrapper.run(q, kv_cache))
 
-        return np.mean(times)
+        return int(np.mean(times) * 1e6)
 
     def _call(
         self,
@@ -232,16 +230,15 @@ class FlashInferAttn(Kernel):
         num_kv_heads: int,
         head_size: int,
         seq_lens: list[int],
-        context_lens: list[int] | None = None,
+        context_lens: list[int],
     ) -> int:
-        time_taken = 0
-        if context_lens is None:
+        if all([seq_len == 1 for seq_len in seq_lens]):
             # decode path
             time_taken = self._bench_decode(
                 num_heads=num_heads,
                 num_kv_heads=num_kv_heads,
                 head_size=head_size,
-                context_lens=seq_lens,
+                context_lens=context_lens,
             )
         else:
             time_taken = self._bench_prefill(
