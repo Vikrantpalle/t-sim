@@ -1,6 +1,6 @@
 from ops import AttentionOp, FFNOp
 from config import ModelConfig, ParallelConfig, RequestBatch, Device
-from .registry import TransformerModel, ModelName
+from .registry import TransformerModel, ModelArch
 
 
 def get_tp_heads(num_heads: int, num_kv_heads: int, tp_size: int):
@@ -225,7 +225,7 @@ class Qwen3Decoder:
 
 
 class Qwen3Model(TransformerModel):
-    MODEL_NAME = ModelName.Qwen3
+    MODEL_ARCH = ModelArch.Qwen3Causal
 
     def __init__(
         self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
@@ -252,3 +252,16 @@ class Qwen3Model(TransformerModel):
         x += self.lm_head.forward(req)
 
         return x
+
+    @classmethod
+    def parse_config(cls, config: dict) -> ModelConfig:
+        return ModelConfig(
+            hidden_size=config["hidden_size"],
+            hidden_act=config["hidden_act"],
+            head_dim=config["head_dim"],
+            intermediate_size=config["intermediate_size"],
+            num_hidden_layers=config["num_hidden_layers"],
+            num_heads=config["num_attention_heads"],
+            num_kv_heads=config["num_key_value_heads"],
+            vocab_size=config["vocab_size"],
+        )
