@@ -59,14 +59,13 @@ class ContinuousBatchingScheduler:
         if prefill_reqs:
             self.elapsed_time += int(
                 self.model.forward(RequestBatch(prefill_reqs, RequestType.PREFILL))
-                * 1e6
             )
             self.metric_collector.add_metrics(is_prefill=True)
 
         decode_reqs = list(filter(lambda r: r.is_decode(), self.running))
         if decode_reqs:
             self.elapsed_time += int(
-                self.model.forward(RequestBatch(decode_reqs, RequestType.DECODE)) * 1e6
+                self.model.forward(RequestBatch(decode_reqs, RequestType.DECODE))
             )
             self.metric_collector.add_metrics(is_prefill=False)
 
