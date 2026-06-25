@@ -1,3 +1,4 @@
+from graph import GraphContext
 from models.registry import AutoModelConfig
 from scheduler import ContinuousBatchingScheduler
 from config import (
@@ -7,7 +8,7 @@ from config import (
     NVModel,
     Request,
 )
-from models.qwen3 import Qwen3Model
+from models.qwen3 import Qwen3Causal
 
 
 if __name__ == "__main__":
@@ -19,8 +20,13 @@ if __name__ == "__main__":
 
     hw_model = Device(HWProvider.NVIDIA, NVModel.RTX_4090)
 
-    model = Qwen3Model(config, parallel_config, hw_model)
+    model = Qwen3Causal(config, parallel_config, hw_model)
 
     req = [Request(512, 2, 0) for _ in range(1)]
 
     ContinuousBatchingScheduler(req, model).start()
+
+    graph_ctx: GraphContext = getattr(model.model, "__tsim_graph_ctx__")
+
+    for op in graph_ctx.ops:
+        print(f"{'.'.join(op.path)}:{op.__class__.__name__} {op.exec_time}ns")

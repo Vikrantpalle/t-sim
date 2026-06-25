@@ -1,5 +1,5 @@
 from models.registry import AutoModelConfig
-from models.qwen3 import Qwen3Model
+from models.qwen3 import Qwen3Causal
 from scheduler import ContinuousBatchingScheduler
 from config import (
     ModelConfig,
@@ -35,7 +35,7 @@ def benchmark_model(
 
     hw_model = Device(HWProvider.NVIDIA, NVModel.RTX_4090)
 
-    model = Qwen3Model(config, parallel_config, hw_model)
+    model = Qwen3Causal(config, parallel_config, hw_model)
     scheduler = ContinuousBatchingScheduler(reqs, model)
 
     scheduler.start()

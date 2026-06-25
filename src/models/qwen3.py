@@ -1,3 +1,4 @@
+from graph import GraphModule
 from ops import AttentionOp, FFNOp
 from config import ModelConfig, ParallelConfig, RequestBatch, Device
 from .registry import TransformerModel, ModelArch
@@ -131,7 +132,7 @@ class VocabParallel:
         return x
 
 
-class Qwen3Attention:
+class Qwen3Attention(GraphModule):
     def __init__(
         self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
     ):
@@ -169,7 +170,7 @@ class Qwen3Attention:
         return x
 
 
-class Qwen3MLP:
+class Qwen3MLP(GraphModule):
     def __init__(
         self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
     ):
@@ -196,7 +197,7 @@ class Qwen3MLP:
         return x
 
 
-class Qwen3Decoder:
+class Qwen3Decoder(GraphModule):
     def __init__(
         self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
     ):
@@ -224,7 +225,7 @@ class Qwen3Decoder:
         return x
 
 
-class Qwen3Model(TransformerModel):
+class Qwen3Model(GraphModule):
     MODEL_ARCH = ModelArch.Qwen3Causal
 
     def __init__(
@@ -252,6 +253,18 @@ class Qwen3Model(TransformerModel):
         x += self.lm_head.forward(req)
 
         return x
+
+
+class Qwen3Causal(TransformerModel):
+    MODEL_ARCH = ModelArch.Qwen3Causal
+
+    def __init__(
+        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
+    ):
+        self.model = Qwen3Model(config, parallel_config, hw_model)
+
+    def forward(self, req: RequestBatch) -> int:
+        return self.model.forward(req)
 
     @classmethod
     def parse_config(cls, config: dict) -> ModelConfig:
