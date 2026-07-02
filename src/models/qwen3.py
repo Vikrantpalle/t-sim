@@ -1,7 +1,13 @@
-from graph import GraphModule, GraphContext, GRAPH_CTX_PATH
+from graph import GraphModule, GraphCtx
+from dataclasses import dataclass
+from typing import Self
 from ops import AttentionOp, FFNOp
-from config import ModelConfig, ParallelConfig, RequestBatch, Device
-from .registry import TransformerModel, ModelArch
+from config import ModelConfig, Device
+from .registry import (
+    ModelGraph,
+    ModelArch,
+    register_model,
+)
 
 
 def get_tp_heads(num_heads: int, num_kv_heads: int, tp_size: int):
@@ -30,69 +36,68 @@ def get_tp_heads(num_heads: int, num_kv_heads: int, tp_size: int):
     return tp_heads, tp_kv_heads
 
 
-class QKVParallel:
-    def __init__(
-        self,
+class QKVParallel(GraphModule):
+    @classmethod
+    def from_config(
+        cls,
         hidden_size: int,
         head_size: int,
         num_heads: int,
         num_kv_heads: int,
         tp_size: int,
         target: Device,
-    ):
+    ) -> Self:
         num_heads, num_kv_heads = get_tp_heads(num_heads, num_kv_heads, tp_size)
 
         # TODO: assuming head size of v and q is same for now
         # change later
-        self.ffn_op = FFNOp(
-            inp_s=hidden_size,
-            out_s=num_heads * head_size + num_kv_heads * head_size * 2,
-            target=target,
+        return cls(
+            modules=[
+                FFNOp(
+                    inp_s=hidden_size,
+                    out_s=num_heads * head_size + num_kv_heads * head_size * 2,
+                    target=target,
+                )
+            ]
         )
 
-    def forward(self, input: RequestBatch) -> int:
 
-        x = 0
-        x += self.ffn_op.forward(sum(input.get_seq_lens()))
-
-        return x
-
-
-class Attention:
-    def __init__(self, num_heads: int, num_kv_heads: int, tp_size: int, target: Device):
+class Attention(GraphModule):
+    @classmethod
+    def from_config(
+        cls, num_heads: int, num_kv_heads: int, tp_size: int, target: Device
+    ):
         num_heads, num_kv_heads = get_tp_heads(num_heads, num_kv_heads, tp_size)
 
-        self.attention = AttentionOp(
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            target=target,
+        return cls(
+            modules=[
+                AttentionOp(
+                    num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
+                    target=target,
+                )
+            ]
         )
 
-    def forward(self, input: RequestBatch):
-        x = 0
-        x += self.attention.forward(input)
 
-        # all gather
-
-        return x
-
-
-class FFNRowParallel:
-    def __init__(self, input_size: int, out_size: int, tp_size: int, target: Device):
-
+class FFNRowParallel(GraphModule):
+    @classmethod
+    def from_config(
+        cls, input_size: int, out_size: int, tp_size: int, target: Device
+    ) -> Self:
         if input_size % tp_size:
             raise ValueError(
                 f"{input_size} (input size) must be divisible by {tp_size} (tp size)"
             )
         input_size = input_size // tp_size
-        self.ffn_op = FFNOp(inp_s=input_size, out_s=out_size, target=target)
-
-    def forward(self, input: RequestBatch):
-        return self.ffn_op.forward(sum(input.get_seq_lens()))
+        return cls(modules=[FFNOp(inp_s=input_size, out_s=out_size, target=target)])
 
 
-class FFNColumnParallel:
-    def __init__(self, input_size: int, out_size: int, tp_size: int, target: Device):
+class FFNColumnParallel(GraphModule):
+    @classmethod
+    def from_config(
+        cls, input_size: int, out_size: int, tp_size: int, target: Device
+    ) -> Self:
         if out_size % tp_size:
             raise ValueError(
                 f"{out_size} (output size) must be divisible by {tp_size} (tp size)"
@@ -100,177 +105,96 @@ class FFNColumnParallel:
 
         out_size = out_size // tp_size
 
-        self.ffn_op = FFNOp(inp_s=input_size, out_s=out_size, target=target)
-
-    def forward(self, input: RequestBatch) -> int:
-        x = 0
-
-        # send
-
-        x += self.ffn_op.forward(sum(input.get_seq_lens()))
-
-        # all reduce
-
-        return x
+        return cls(modules=[FFNOp(inp_s=input_size, out_s=out_size, target=target)])
 
 
-class VocabParallel:
-    def __init__(self, input_size: int, out_size: int, tp_size: int, target: Device):
-        self.shard_size = (out_size + tp_size - 1) // tp_size
+class VocabParallel(GraphModule):
+    @classmethod
+    def from_config(
+        cls, input_size: int, out_size: int, tp_size: int, target: Device
+    ) -> Self:
+        shard_size = (out_size + tp_size - 1) // tp_size
 
-        self.ffn_op = FFNOp(inp_s=input_size, out_s=self.shard_size, target=target)
-
-    def forward(self, input: RequestBatch) -> int:
-        x = 0
-
-        # send
-
-        x += self.ffn_op.forward(len(input.get_seq_lens()))
-
-        # all reduce
-
-        return x
+        return cls(modules=[FFNOp(inp_s=input_size, out_s=shard_size, target=target)])
 
 
 class Qwen3Attention(GraphModule):
-    def __init__(
-        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
-    ):
+    @classmethod
+    def from_config(cls, ctx: GraphCtx) -> Self:
 
-        tp_size = parallel_config.tp
+        tp_size = ctx.parallel_cfg.tp
 
-        self.qkv_proj = QKVParallel(
-            config.hidden_size,
-            config.head_dim,
-            config.num_heads,
-            config.num_kv_heads,
-            tp_size,
-            hw_model,
+        return cls(
+            modules=[
+                QKVParallel.from_config(
+                    ctx.model_cfg.hidden_size,
+                    ctx.model_cfg.head_dim,
+                    ctx.model_cfg.num_heads,
+                    ctx.model_cfg.num_kv_heads,
+                    tp_size,
+                    ctx.device,
+                ),
+                Attention.from_config(
+                    ctx.model_cfg.num_heads,
+                    ctx.model_cfg.num_kv_heads,
+                    tp_size,
+                    ctx.device,
+                ),
+                FFNRowParallel.from_config(
+                    ctx.model_cfg.head_dim * ctx.model_cfg.num_heads,
+                    ctx.model_cfg.hidden_size,
+                    tp_size,
+                    ctx.device,
+                ),
+            ]
         )
-
-        self.attention = Attention(
-            config.num_heads, config.num_kv_heads, tp_size, hw_model
-        )
-
-        self.attn_proj = FFNRowParallel(
-            config.head_dim * config.num_heads, config.hidden_size, tp_size, hw_model
-        )
-
-    def forward(self, input: RequestBatch):
-
-        x = 0
-        x += self.qkv_proj.forward(input)
-
-        # qk norm + rope
-
-        x += self.attention.forward(input)
-
-        x += self.attn_proj.forward(input)
-
-        return x
 
 
 class Qwen3MLP(GraphModule):
-    def __init__(
-        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
-    ):
-        self.config = config
-        tp_size = parallel_config.tp
-
-        self.up_proj = FFNColumnParallel(
-            config.hidden_size, config.intermediate_size, tp_size, hw_model
+    @classmethod
+    def from_config(cls, ctx: GraphCtx) -> Self:
+        return cls(
+            modules=[
+                FFNColumnParallel.from_config(
+                    ctx.model_cfg.hidden_size,
+                    ctx.model_cfg.intermediate_size,
+                    ctx.parallel_cfg.tp,
+                    target=ctx.device,
+                ),
+                FFNRowParallel.from_config(
+                    ctx.model_cfg.intermediate_size,
+                    ctx.model_cfg.hidden_size,
+                    ctx.parallel_cfg.tp,
+                    target=ctx.device,
+                ),
+            ]
         )
-
-        self.down_proj = FFNRowParallel(
-            config.intermediate_size, config.hidden_size, tp_size, hw_model
-        )
-
-    def forward(self, input: RequestBatch):
-        x = 0
-
-        x += self.up_proj.forward(input)
-
-        # gate proj
-
-        x += self.down_proj.forward(input)
-
-        return x
 
 
 class Qwen3Decoder(GraphModule):
-    def __init__(
-        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
-    ):
-        self.attention = Qwen3Attention(config, parallel_config, hw_model)
-
-        self.mlp = Qwen3MLP(config, parallel_config, hw_model)
-
-    def forward(
-        self,
-        req: RequestBatch,
-    ) -> int:
-        # skipping layernorm for now as its impact is negligible in forward passes
-        x = 0
-
-        # rms norm
-
-        x += self.attention.forward(req)
-
-        # add + rms norm
-
-        x += self.mlp.forward(req)
-
-        # add
-
-        return x
+    @classmethod
+    def from_config(cls, ctx: GraphCtx) -> Self:
+        return cls(modules=[Qwen3Attention.from_config(ctx), Qwen3MLP.from_config(ctx)])
 
 
-class Qwen3Model(GraphModule):
-    MODEL_ARCH = ModelArch.Qwen3Causal
-
-    def __init__(
-        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
-    ):
-        self.decoder = Qwen3Decoder(config, parallel_config, hw_model)
-
-        self.lm_head = VocabParallel(
-            config.hidden_size, config.vocab_size, parallel_config.tp, hw_model
+@register_model(ModelArch.Qwen3Causal)
+@dataclass
+class Qwen3Causal(ModelGraph):
+    @classmethod
+    def from_config(cls, ctx: GraphCtx) -> Self:
+        return cls(
+            modules=[
+                *Qwen3Decoder.from_config(ctx).repeat(ctx.model_cfg.num_hidden_layers),
+                VocabParallel.from_config(
+                    ctx.model_cfg.hidden_size,
+                    ctx.model_cfg.vocab_size,
+                    ctx.parallel_cfg.tp,
+                    ctx.device,
+                ),
+            ],
+            ctx=ctx,
+            arch=ModelArch.Qwen3Causal,
         )
-        self.num_hidden_layers = config.num_hidden_layers
-
-    def forward(self, req: RequestBatch) -> int:
-        x = 0
-
-        # embedding
-
-        # hidden layers
-        dec_time = self.decoder.forward(req)
-        x += dec_time * self.num_hidden_layers
-
-        # rms norm
-
-        # lm head
-        x += self.lm_head.forward(req)
-
-        return x
-
-
-class Qwen3Causal(TransformerModel):
-    MODEL_ARCH = ModelArch.Qwen3Causal
-
-    def __init__(
-        self, config: ModelConfig, parallel_config: ParallelConfig, hw_model: Device
-    ):
-        self.model = Qwen3Model(config, parallel_config, hw_model)
-
-    def forward(self, req: RequestBatch) -> int:
-        return self.model.forward(req)
-
-    def get_graph_ctx(self) -> GraphContext:
-        ctx = getattr(self.model, GRAPH_CTX_PATH)
-        if ctx is None:
-            raise ValueError("Graph Context not found")
-        return ctx
 
     @classmethod
     def parse_config(cls, config: dict) -> ModelConfig:

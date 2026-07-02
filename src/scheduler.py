@@ -1,12 +1,18 @@
-from metrics import MetricCollector
-from models.registry import TransformerModel
+from abc import ABC, abstractmethod
+from models.registry import ModelGraph
 from config import Request, RequestBatch, RequestType
 import heapq
 
 
-class ContinuousBatchingScheduler:
+class Scheduler(ABC):
+    @abstractmethod
+    def step(self):
+        raise NotImplementedError
+
+
+class ContinuousBatchingScheduler(Scheduler):
     def __init__(
-        self, requests: list[Request], model: TransformerModel, max_batch_len: int = 32
+        self, requests: list[Request], model: ModelGraph, max_batch_len: int = 32
     ):
 
         # set of requests that need to be processed
@@ -23,8 +29,6 @@ class ContinuousBatchingScheduler:
         self.model = model
 
         self.max_batch_len = max_batch_len
-
-        self.metric_collector = MetricCollector(model)
 
     def drain_completed_reqs(self):
         running = []
@@ -58,16 +62,18 @@ class ContinuousBatchingScheduler:
 
         if prefill_reqs:
             self.elapsed_time += int(
-                self.model.forward(RequestBatch(prefill_reqs, RequestType.PREFILL))
+                self.model.forward(
+                    RequestBatch(prefill_reqs, RequestType.PREFILL)
+                ).exec_time
             )
-            self.metric_collector.add_metrics(is_prefill=True)
 
         decode_reqs = list(filter(lambda r: r.is_decode(), self.running))
         if decode_reqs:
             self.elapsed_time += int(
-                self.model.forward(RequestBatch(decode_reqs, RequestType.DECODE))
+                self.model.forward(
+                    RequestBatch(decode_reqs, RequestType.DECODE)
+                ).exec_time
             )
-            self.metric_collector.add_metrics(is_prefill=False)
 
         for req in self.running:
             if req.is_prefill():

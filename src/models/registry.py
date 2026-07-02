@@ -1,37 +1,23 @@
-from graph import GraphContext
+from config import ModelConfig
+from graph import ModelGraph
 from transformers import AutoConfig
-from config import RequestBatch, ModelConfig
 from enum import StrEnum
-from typing import ClassVar
-from abc import ABC, abstractmethod
 
 
 class ModelArch(StrEnum):
     Qwen3Causal = "Qwen3ForCausalLM"
 
 
-class TransformerModel(ABC):
-    MODEL_ARCH: ClassVar[ModelArch]
-
-    def __init_subclass__(cls: type["TransformerModel"], **kwargs):
-        super().__init_subclass__(**kwargs)
-        MODEL_REGISTRY[cls.MODEL_ARCH] = cls
-
-    @abstractmethod
-    def forward(self, req: RequestBatch) -> int:
-        raise NotImplementedError
-
-    @classmethod
-    @abstractmethod
-    def parse_config(cls, config: dict) -> ModelConfig:
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_graph_ctx(self) -> GraphContext:
-        raise NotImplementedError
+MODEL_REGISTRY: dict[str, type[ModelGraph]] = {}
 
 
-MODEL_REGISTRY: dict[ModelArch, type[TransformerModel]] = {}
+def register_model(model_arch: str):
+    def _register_model(cls):
+        MODEL_REGISTRY[model_arch] = cls
+
+        return cls
+
+    return _register_model
 
 
 class AutoModelConfig:
@@ -50,6 +36,6 @@ class AutoModelConfig:
                 f"None of the following architectures are supported: {','.join(archs)}"
             )
 
-        model = MODEL_REGISTRY[arch]
+        model = MODEL_REGISTRY[final_arch]
         config = model.parse_config(config)
         return config

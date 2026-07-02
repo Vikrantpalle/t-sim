@@ -1,3 +1,4 @@
+from graph import GraphCtx
 from models.registry import AutoModelConfig
 from models.qwen3 import Qwen3Causal
 from scheduler import ContinuousBatchingScheduler
@@ -35,7 +36,7 @@ def benchmark_model(
 
     hw_model = Device(HWProvider.NVIDIA, NVModel.RTX_4090)
 
-    model = Qwen3Causal(config, parallel_config, hw_model)
+    model = Qwen3Causal.from_config(GraphCtx(config, parallel_config, hw_model))
     scheduler = ContinuousBatchingScheduler(reqs, model)
 
     scheduler.start()
@@ -67,8 +68,6 @@ def benchmark_model(
     print(f"Tokens / s: {tok_s}tok/s")
     print(f"Inp Tokens / s: {inp_tok_s}tok/s")
     print(f"Out Tokens / s: {out_tok_s}tok/s")
-
-    scheduler.metric_collector.visualize()
 
 
 if __name__ == "__main__":

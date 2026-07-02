@@ -1,16 +1,6 @@
-from graph import GraphOp
+from graph import Op, FwdResult
 from kernels import FlashInferAttn, Kernel, FlashInferGEMM
 from config import RequestBatch, Device
-
-
-class Op(GraphOp):
-    def _forward(self, *args, **kwargs) -> int:
-        raise NotImplementedError
-
-    def forward(self, *args, **kwargs) -> int:
-        exec_time = self._forward(*args, **kwargs)
-        self.exec_time = exec_time
-        return exec_time
 
 
 class FFNOp(Op):
@@ -29,12 +19,13 @@ class FFNOp(Op):
     def resolve_kernel(self) -> Kernel:
         return FlashInferGEMM(self.target)
 
-    def _forward(self, batch_size: int) -> int:
-        return self.kernel.call(
-            batch_size=batch_size,
+    def _forward(self, input: RequestBatch) -> FwdResult:
+        bench_time = self.kernel.call(
+            batch_size=len(input.requests),
             inp_size=self.inp_s,
             out_size=self.out_s,
         )
+        return FwdResult(bench_time)
 
 
 class AttentionOp(Op):
@@ -59,14 +50,15 @@ class AttentionOp(Op):
     def resolve_kernel(self) -> Kernel:
         return FlashInferAttn(self.target)
 
-    def _forward(self, input: RequestBatch) -> int:
+    def _forward(self, input: RequestBatch) -> FwdResult:
         seq_lens = input.get_seq_lens()
         context_lens = input.get_context_lens()
 
-        return self.kernel.call(
+        bench_time = self.kernel.call(
             num_heads=self.q_h,
             num_kv_heads=self.kv_h,
             head_size=self.head_size,
             seq_lens=seq_lens,
             context_lens=context_lens,
         )
+        return FwdResult(bench_time)

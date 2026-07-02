@@ -1,3 +1,4 @@
+import os
 from utils.hash import sha256_hash
 from config import Device, SCHEDULER_CONFIG
 from abc import ABC, abstractmethod
@@ -25,6 +26,9 @@ class Kernel(ABC):
     def _call(self, *args, **kwargs) -> int:
         raise NotImplementedError
 
+    def _fake_call(self, *args, **kwars) -> int:
+        return int(1e9)
+
     def call(self, *args, **kwargs) -> int:
         """Wrapper around real implementation
 
@@ -40,7 +44,13 @@ class Kernel(ABC):
         if key_hash in CACHE:
             return CACHE[key_hash]
 
-        res = self._call(*args, **kwargs)
+        print(os.environ["MOCK_KERNEL"])
+
+        res = (
+            self._call(*args, **kwargs)
+            if os.environ["MOCK_KERNEL"] != "1"
+            else self._fake_call(*args, **kwargs)
+        )
         CACHE[key_hash] = res
         return res
 

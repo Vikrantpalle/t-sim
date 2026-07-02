@@ -1,3 +1,4 @@
+from graph import GraphCtx
 from models.registry import AutoModelConfig
 from scheduler import ContinuousBatchingScheduler
 from config import (
@@ -19,11 +20,9 @@ if __name__ == "__main__":
 
     hw_model = Device(HWProvider.NVIDIA, NVModel.RTX_4090)
 
-    model = Qwen3Causal(config, parallel_config, hw_model)
+    model = Qwen3Causal.from_config(GraphCtx(config, parallel_config, hw_model))
 
     req = [Request(512, 2, 0) for _ in range(1)]
 
     scheduler = ContinuousBatchingScheduler(req, model)
     scheduler.start()
-
-    scheduler.metric_collector.visualize()
