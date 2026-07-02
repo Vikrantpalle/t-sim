@@ -44,8 +44,6 @@ class Kernel(ABC):
         if key_hash in CACHE:
             return CACHE[key_hash]
 
-        print(os.environ["MOCK_KERNEL"])
-
         res = (
             self._call(*args, **kwargs)
             if os.environ["MOCK_KERNEL"] != "1"

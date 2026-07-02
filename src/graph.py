@@ -1,3 +1,4 @@
+from collections import defaultdict
 from abc import abstractmethod
 from typing import Union, ClassVar, Self
 from config import ModelConfig, ParallelConfig, Device, RequestBatch
@@ -42,7 +43,6 @@ class GraphModule:
     def forward(self, req: RequestBatch) -> FwdResult:
         res = FwdResult(0)
         for mod in self.modules:
-            print(type(mod))
             res += mod.forward(req)
         return res
 
@@ -56,6 +56,9 @@ class GraphModule:
 
     def repeat(self, num_repeats: int) -> list[Self]:
         return [self.duplicate() for _ in range(num_repeats)]
+
+    def print_graph(self, depth: int = 0, max_depth: int = 2):
+        print_graph(self, depth, max_depth)
 
 
 @dataclass(kw_only=True)
@@ -79,3 +82,26 @@ class ModelGraph:
     @abstractmethod
     def parse_config(cls, config: dict) -> ModelConfig:
         raise NotImplementedError
+
+    def print_graph(self, depth: int = 0, max_depth: int = 2):
+        print_graph(self, depth, max_depth)
+
+
+def print_graph(root: GraphModule | ModelGraph, depth: int = 0, max_depth: int = 2):
+    if depth > max_depth:
+        return
+
+    names = []
+    name_count = defaultdict(int)
+    for mod in root.modules:
+        orig_name = mod.__class__.__name__
+        name_count[orig_name] += 1
+        names.append(orig_name + "_" + str(name_count[orig_name]))
+
+    spacing = "  "
+    for mod, name in zip(root.modules, names):
+        print(spacing * depth + name)
+        if isinstance(mod, GraphModule):
+            mod.print_graph(depth + 1, max_depth)
+        else:
+            print(spacing * depth + mod.__class__.__name__)
